@@ -88,9 +88,13 @@ async def send_wled_command_async(payload):
 @service
 async def wled_fade_start():
     """Start the WLED fade effect"""
+    log.info(f"wled_fade_start called - current running state: {pyscript.running}")
+
     if pyscript.running:
-        log.warning("WLED fade effect is already running")
-        return
+        log.warning("WLED fade effect is already running - stopping it first")
+        pyscript.running = False
+        task.unique("wled_fade_effect", kill_me=True)
+        await task.sleep(1)
 
     log.info(f"Starting WLED fade effect - IP: {WLED_IP}, Segment: {SEGMENT_ID}")
     log.info(f"Matrix: X({START_X}-{STOP_X}), Y({START_Y}-{STOP_Y})")
@@ -102,8 +106,10 @@ async def wled_fade_start():
     # Clear segment
     log.info("Clearing WLED segment...")
     await blackout_segment()
+    log.info("Blackout complete")
 
     # Start effect task
+    log.info("Creating run_effect task...")
     task.unique("wled_fade_effect")
     task.create(run_effect())
 
