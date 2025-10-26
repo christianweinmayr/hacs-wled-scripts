@@ -1,0 +1,30 @@
+# Example Home Assistant Configuration
+# Add these to your configuration.yaml
+
+# Input Boolean Helper
+input_boolean:
+  wled_fade_effect:
+    name: WLED Fade Effect
+    icon: mdi:lightbulb-group
+
+# Automation to control the effect
+automation:
+  - alias: "WLED Fade Effect Control"
+    description: "Start/stop WLED fade effect based on input boolean"
+    trigger:
+      - platform: state
+        entity_id: input_boolean.wled_fade_effect
+    action:
+      - choose:
+          - conditions:
+              - condition: state
+                entity_id: input_boolean.wled_fade_effect
+                state: "on"
+            sequence:
+              - service: pyscript.wled_fade_start
+          - conditions:
+              - condition: state
+                entity_id: input_boolean.wled_fade_effect
+                state: "off"
+            sequence:
+              - service: pyscript.wled_fade_stop

@@ -1,0 +1,48 @@
+# Example Dashboard Cards for WLED Effects
+
+# Simple Button Card
+type: button
+name: WLED Fade Effect
+entity: input_boolean.wled_fade_effect
+show_state: true
+tap_action:
+  action: toggle
+icon: mdi:lightbulb-group-outline
+
+---
+
+# Entities Card
+type: entities
+title: WLED Effects
+entities:
+  - entity: input_boolean.wled_fade_effect
+    name: Fade Effect
+    secondary_info: last-changed
+
+---
+
+# Vertical Stack with Status
+type: vertical-stack
+cards:
+  - type: entities
+    title: WLED Effects
+    entities:
+      - entity: input_boolean.wled_fade_effect
+        name: Fade Effect
+        secondary_info: last-changed
+
+  - type: markdown
+    content: |
+      **Status**: {% if is_state('input_boolean.wled_fade_effect', 'on') %}🟢 Running{% else %}⭕ Stopped{% endif %}
+
+      Effect creates 3-6 random segments that fade in/out independently.
+
+---
+
+# Mushroom Card (requires mushroom cards from HACS)
+type: custom:mushroom-entity-card
+entity: input_boolean.wled_fade_effect
+name: WLED Fade
+icon: mdi:lightbulb-group
+tap_action:
+  action: toggle
