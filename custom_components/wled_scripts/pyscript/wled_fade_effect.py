@@ -207,15 +207,26 @@ async def fade_segment_lifecycle(segment_id):
 
     # STAY ON
     stay_duration = random.uniform(STAY_ON_MIN, STAY_ON_MAX)
-    await asyncio.sleep(stay_duration)
+
+    # Spawn replacement during stay-on phase (before fade-out) to maintain continuous lighting
+    # Wait for most of the stay duration, then spawn new segment
+    spawn_delay = max(stay_duration - FADE_IN_SECONDS, stay_duration * 0.5)
+    await asyncio.sleep(spawn_delay)
 
     if not running:
         return
 
-    # Unregister and spawn replacement
-    active_segments.pop(segment_id, None)
+    # Spawn replacement now (while we're still fully on)
     segment_counter += 1
     fade_segment_lifecycle(segment_counter)
+
+    # Wait for the rest of the stay duration
+    remaining_stay = stay_duration - spawn_delay
+    if remaining_stay > 0:
+        await asyncio.sleep(remaining_stay)
+
+    if not running:
+        return
 
     # FADE OUT
     num_steps = int(FADE_OUT_SECONDS * FADE_STEPS_PER_SECOND)
@@ -251,6 +262,11 @@ async def fade_segment_lifecycle(segment_id):
         requests.post(WLED_URL, json=payload, timeout=1)
     except:
         pass
+
+    # Unregister this segment only after fade-out completes
+    active_segments.pop(segment_id, None)
+
+    log.info(f"Segment {segment_id} complete")
 
 
 @task_unique("wled_fade_effect")
