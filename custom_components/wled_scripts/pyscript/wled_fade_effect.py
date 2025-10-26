@@ -70,12 +70,19 @@ async def send_wled_command_async(payload):
     """Send command to WLED using REST API"""
     import aiohttp
     try:
+        log.debug(f"Sending to {WLED_URL}: {payload}")
         async with aiohttp.ClientSession() as session:
             async with session.post(WLED_URL, json=payload, timeout=aiohttp.ClientTimeout(total=2)) as resp:
-                if resp.status != 200:
-                    log.warning(f"WLED returned status {resp.status}")
+                if resp.status == 200:
+                    log.debug(f"WLED command successful")
+                else:
+                    log.error(f"WLED returned status {resp.status}")
+                    response_text = await resp.text()
+                    log.error(f"Response: {response_text}")
     except Exception as e:
-        log.error(f"Error sending WLED command: {e}")
+        log.error(f"Error sending WLED command to {WLED_URL}: {e}")
+        import traceback
+        log.error(f"Traceback: {traceback.format_exc()}")
 
 
 @service
@@ -85,18 +92,22 @@ async def wled_fade_start():
         log.warning("WLED fade effect is already running")
         return
 
+    log.info(f"Starting WLED fade effect - IP: {WLED_IP}, Segment: {SEGMENT_ID}")
+    log.info(f"Matrix: X({START_X}-{STOP_X}), Y({START_Y}-{STOP_Y})")
+
     pyscript.running = True
     pyscript.active_segments = {}
     pyscript.segment_counter = 0
 
     # Clear segment
+    log.info("Clearing WLED segment...")
     await blackout_segment()
 
     # Start effect task
     task.unique("wled_fade_effect")
     task.create(run_effect())
 
-    log.info("WLED fade effect started")
+    log.info("WLED fade effect started - check logs for 'Segment X:' messages")
 
 
 @service
@@ -264,9 +275,12 @@ async def run_effect():
     """Main effect loop"""
     target_segments = random.randint(NUM_SEGMENTS_MIN, NUM_SEGMENTS_MAX)
 
+    log.info(f"Starting {target_segments} initial segments")
+
     # Start initial segments
     for i in range(target_segments):
         pyscript.segment_counter += 1
+        log.info(f"Creating segment {pyscript.segment_counter}")
         task.create(fade_segment_lifecycle(pyscript.segment_counter))
         await task.sleep(random.uniform(0.5, 1.5))
 
