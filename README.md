@@ -35,16 +35,26 @@ Custom Python scripts for controlling WLED matrix displays with advanced fade ef
    - Click "Download"
    - Restart Home Assistant
 
-4. The integration will automatically copy scripts to your `/config/pyscript/` directory
-   - If auto-copy fails, manually copy from `/config/custom_components/wled_scripts/pyscript/` to `/config/pyscript/`
+4. Set up the integration:
+   - Go to Settings → Devices & Services
+   - Click "+ ADD INTEGRATION"
+   - Search for "WLED Effect Scripts"
+   - Click to add it
+   - The integration will automatically copy scripts to your `/config/pyscript/` directory
+
+5. Reload Pyscript:
+   - Go to Developer Tools → YAML
+   - Click "PYSCRIPT" (or restart Home Assistant)
+   - The `pyscript.wled_fade_start` and `pyscript.wled_fade_stop` services should now be available
 
 ### Manual Installation
 
 1. Ensure Pyscript is installed and configured
 2. Download this repository
 3. Copy the entire `custom_components/wled_scripts/` folder to `/config/custom_components/`
-4. Copy `custom_components/wled_scripts/pyscript/wled_fade_effect.py` to `/config/pyscript/`
-5. Restart Home Assistant
+4. Restart Home Assistant
+5. Go to Settings → Devices & Services → Add Integration → "WLED Effect Scripts"
+6. Reload Pyscript in Developer Tools → YAML
 
 ## Configuration
 
