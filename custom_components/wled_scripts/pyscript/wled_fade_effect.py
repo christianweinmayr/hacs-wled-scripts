@@ -180,7 +180,8 @@ async def fade_segment_lifecycle(segment_id):
         log.debug(f"Segment {segment_id} skipped - no space available")
         # Spawn replacement
         pyscript.segment_counter += 1
-        task.create(fade_segment_lifecycle(pyscript.segment_counter))
+        task_name = f"fade_segment_{pyscript.segment_counter}"
+        task.create(fade_segment_lifecycle(pyscript.segment_counter), name=task_name)
         return
 
     # Register segment
@@ -232,7 +233,8 @@ async def fade_segment_lifecycle(segment_id):
 
     # Spawn replacement now (while we're still fully on)
     pyscript.segment_counter += 1
-    task.create(fade_segment_lifecycle(pyscript.segment_counter))
+    task_name = f"fade_segment_{pyscript.segment_counter}"
+    task.create(fade_segment_lifecycle(pyscript.segment_counter), name=task_name)
 
     # Wait for the rest of the stay duration
     remaining_stay = stay_duration - spawn_delay
@@ -287,7 +289,8 @@ async def run_effect():
     for i in range(target_segments):
         pyscript.segment_counter += 1
         log.info(f"Creating segment {pyscript.segment_counter}")
-        task.create(fade_segment_lifecycle(pyscript.segment_counter))
+        task_name = f"fade_segment_{pyscript.segment_counter}"
+        task.create(fade_segment_lifecycle(pyscript.segment_counter), name=task_name)
         await task.sleep(random.uniform(0.5, 1.5))
 
     # Keep running
