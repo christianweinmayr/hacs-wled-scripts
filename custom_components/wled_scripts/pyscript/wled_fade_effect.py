@@ -68,24 +68,14 @@ def check_overlap(start_y, end_y):
 
 async def send_wled_command_async(payload):
     """Send command to WLED using REST API"""
+    import aiohttp
     try:
-        await homeassistant.call_service(
-            "rest_command",
-            "wled_update",
-            url=WLED_URL,
-            method="POST",
-            payload=str(payload),
-            content_type="application/json"
-        )
+        async with aiohttp.ClientSession() as session:
+            async with session.post(WLED_URL, json=payload, timeout=aiohttp.ClientTimeout(total=2)) as resp:
+                if resp.status != 200:
+                    log.warning(f"WLED returned status {resp.status}")
     except Exception as e:
-        # Use direct HTTP call instead
-        import aiohttp
-        try:
-            async with aiohttp.ClientSession() as session:
-                async with session.post(WLED_URL, json=payload, timeout=2) as resp:
-                    pass
-        except Exception as e2:
-            log.error(f"Error sending WLED command: {e2}")
+        log.error(f"Error sending WLED command: {e}")
 
 
 @service
@@ -146,7 +136,6 @@ async def blackout_segment():
     await task.sleep(0.5)
 
 
-@task_unique("wled_fade_segment_{segment_id}")
 async def fade_segment_lifecycle(segment_id):
     """Run one complete lifecycle for a single segment"""
 
@@ -271,7 +260,6 @@ async def fade_segment_lifecycle(segment_id):
     log.info(f"Segment {segment_id} complete")
 
 
-@task_unique("wled_fade_effect")
 async def run_effect():
     """Main effect loop"""
     target_segments = random.randint(NUM_SEGMENTS_MIN, NUM_SEGMENTS_MAX)
