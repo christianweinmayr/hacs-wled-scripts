@@ -58,6 +58,16 @@ def ease_in_out(t):
         return 1 - math.pow(-2 * t + 2, 3) / 2
 
 
+async def interruptible_sleep(duration):
+    """Sleep in small chunks so we can exit quickly if stopped"""
+    remaining_time = duration
+    while remaining_time > 0 and running:
+        sleep_time = min(0.5, remaining_time)  # Check every 0.5 seconds
+        await task.sleep(sleep_time)
+        remaining_time -= sleep_time
+    return running  # Return False if interrupted
+
+
 def check_overlap(start_y, end_y):
     """Check if a Y range overlaps with any active segments"""
     for seg_id, (seg_start, seg_end) in active_segments.items():
@@ -119,14 +129,17 @@ async def wled_fade_start():
 
 
 @service
-def wled_fade_stop():
+async def wled_fade_stop():
     """Stop the WLED fade effect"""
     global running
 
     running = False
     task.unique("wled_fade_effect", kill_me=True)
 
-    log.info("WLED fade effect stopped")
+    log.info("WLED fade effect stopped - clearing LEDs")
+
+    # Clear all LEDs immediately
+    await blackout_segment()
 
 
 async def blackout_segment():
@@ -162,7 +175,8 @@ async def fade_segment_lifecycle(segment_id):
     global running, active_segments, segment_counter
 
     # Random delay before starting
-    await task.sleep(random.uniform(0, 3))
+    if not await interruptible_sleep(random.uniform(0, 3)):
+        return
 
     if not running:
         return
@@ -228,9 +242,7 @@ async def fade_segment_lifecycle(segment_id):
     # Spawn replacement during stay-on phase (before fade-out) to maintain continuous lighting
     # Wait for most of the stay duration, then spawn new segment
     spawn_delay = max(stay_duration - FADE_IN_SECONDS, stay_duration * 0.5)
-    await task.sleep(spawn_delay)
-
-    if not running:
+    if not await interruptible_sleep(spawn_delay):
         return
 
     # Spawn replacement now (while we're still fully on)
@@ -241,10 +253,8 @@ async def fade_segment_lifecycle(segment_id):
     # Wait for the rest of the stay duration
     remaining_stay = stay_duration - spawn_delay
     if remaining_stay > 0:
-        await task.sleep(remaining_stay)
-
-    if not running:
-        return
+        if not await interruptible_sleep(remaining_stay):
+            return
 
     # FADE OUT
     num_steps = int(FADE_OUT_SECONDS * FADE_STEPS_PER_SECOND)
