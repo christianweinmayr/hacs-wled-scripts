@@ -33,7 +33,7 @@ MIN_SPACING = 1
 # Global state
 pyscript.active_segments = {}
 pyscript.running = False
-pyscript.segment_counter = 0
+segment_counter = 0  # Use regular Python variable for counter (pyscript state vars are strings)
 
 
 def calculate_led_index(x, y):
@@ -99,9 +99,11 @@ async def wled_fade_start():
     log.info(f"Starting WLED fade effect - IP: {WLED_IP}, Segment: {SEGMENT_ID}")
     log.info(f"Matrix: X({START_X}-{STOP_X}), Y({START_Y}-{STOP_Y})")
 
+    global segment_counter
+
     pyscript.running = True
     pyscript.active_segments = {}
-    pyscript.segment_counter = 0
+    segment_counter = 0
 
     # Clear segment
     log.info("Clearing WLED segment...")
@@ -179,9 +181,10 @@ async def fade_segment_lifecycle(segment_id):
     if start_y is None:
         log.debug(f"Segment {segment_id} skipped - no space available")
         # Spawn replacement
-        pyscript.segment_counter += 1
-        task_name = f"fade_segment_{pyscript.segment_counter}"
-        task.create(fade_segment_lifecycle(pyscript.segment_counter), name=task_name)
+        global segment_counter
+        segment_counter += 1
+        task_name = f"fade_segment_{segment_counter}"
+        task.create(fade_segment_lifecycle(segment_counter), name=task_name)
         return
 
     # Register segment
@@ -232,9 +235,10 @@ async def fade_segment_lifecycle(segment_id):
         return
 
     # Spawn replacement now (while we're still fully on)
-    pyscript.segment_counter += 1
-    task_name = f"fade_segment_{pyscript.segment_counter}"
-    task.create(fade_segment_lifecycle(pyscript.segment_counter), name=task_name)
+    global segment_counter
+    segment_counter += 1
+    task_name = f"fade_segment_{segment_counter}"
+    task.create(fade_segment_lifecycle(segment_counter), name=task_name)
 
     # Wait for the rest of the stay duration
     remaining_stay = stay_duration - spawn_delay
@@ -281,16 +285,18 @@ async def fade_segment_lifecycle(segment_id):
 
 async def run_effect():
     """Main effect loop"""
+    global segment_counter
+
     target_segments = random.randint(NUM_SEGMENTS_MIN, NUM_SEGMENTS_MAX)
 
     log.info(f"Starting {target_segments} initial segments")
 
     # Start initial segments
     for i in range(target_segments):
-        pyscript.segment_counter += 1
-        log.info(f"Creating segment {pyscript.segment_counter}")
-        task_name = f"fade_segment_{pyscript.segment_counter}"
-        task.create(fade_segment_lifecycle(pyscript.segment_counter), name=task_name)
+        segment_counter += 1
+        log.info(f"Creating segment {segment_counter}")
+        task_name = f"fade_segment_{segment_counter}"
+        task.create(fade_segment_lifecycle(segment_counter), name=task_name)
         await task.sleep(random.uniform(0.5, 1.5))
 
     # Keep running
