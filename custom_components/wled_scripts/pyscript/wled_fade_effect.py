@@ -157,6 +157,7 @@ async def blackout_segment():
     await task.sleep(0.5)
 
 
+@task_unique("segment_{segment_id}", kill_me=lambda: not running)
 async def fade_segment_lifecycle(segment_id):
     """Run one complete lifecycle for a single segment"""
     global running, active_segments, segment_counter
