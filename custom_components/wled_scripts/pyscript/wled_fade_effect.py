@@ -157,7 +157,6 @@ async def blackout_segment():
     await task.sleep(0.5)
 
 
-@task_unique("segment_{segment_id}", kill_me=lambda: not running)
 async def fade_segment_lifecycle(segment_id):
     """Run one complete lifecycle for a single segment"""
     global running, active_segments, segment_counter
@@ -184,9 +183,7 @@ async def fade_segment_lifecycle(segment_id):
 
     if start_y is None:
         log.debug(f"Segment {segment_id} skipped - no space available")
-        # Spawn replacement
-        segment_counter += 1
-        fade_segment_lifecycle(segment_counter)
+        # Don't spawn replacement - just exit. Main loop will handle spawning new segments
         return
 
     # Register segment
@@ -238,6 +235,7 @@ async def fade_segment_lifecycle(segment_id):
 
     # Spawn replacement now (while we're still fully on)
     segment_counter += 1
+    task.unique(f"segment_{segment_counter}")
     fade_segment_lifecycle(segment_counter)
 
     # Wait for the rest of the stay duration
@@ -295,7 +293,8 @@ async def run_effect():
     for i in range(target_segments):
         segment_counter += 1
         log.info(f"Creating segment {segment_counter}")
-        # Call async function directly - pyscript will handle it as background task
+        # Set unique task context and call
+        task.unique(f"segment_{segment_counter}")
         fade_segment_lifecycle(segment_counter)
         await task.sleep(random.uniform(0.5, 1.5))
 
