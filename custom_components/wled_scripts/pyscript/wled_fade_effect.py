@@ -34,6 +34,7 @@ MIN_SPACING = 1
 active_segments = {}
 running = False
 segment_counter = 0
+active_tasks = set()  # Track all active segment task names
 
 
 def calculate_led_index(x, y):
@@ -98,14 +99,13 @@ async def send_wled_command_async(payload):
 @service
 async def wled_fade_start():
     """Start the WLED fade effect"""
-    global running, active_segments, segment_counter
+    global running, active_segments, segment_counter, active_tasks
 
     log.info(f"wled_fade_start called - current running state: {running}")
 
     if running:
         log.warning("WLED fade effect is already running - stopping it first")
-        running = False
-        task.unique("wled_fade_effect", kill_me=True)
+        await wled_fade_stop()
         await task.sleep(1)
 
     log.info(f"Starting WLED fade effect - IP: {WLED_IP}, Segment: {SEGMENT_ID}")
@@ -114,6 +114,7 @@ async def wled_fade_start():
     running = True
     active_segments = {}
     segment_counter = 0
+    active_tasks = set()
 
     # Clear segment
     log.info("Clearing WLED segment...")
@@ -131,15 +132,26 @@ async def wled_fade_start():
 @service
 async def wled_fade_stop():
     """Stop the WLED fade effect"""
-    global running
+    global running, active_tasks
+
+    log.info(f"Stopping WLED fade effect - killing {len(active_tasks)} segment tasks")
 
     running = False
+
+    # Kill main effect task
     task.unique("wled_fade_effect", kill_me=True)
 
-    log.info("WLED fade effect stopped - clearing LEDs")
+    # Kill all active segment tasks
+    for task_name in list(active_tasks):
+        log.debug(f"Killing task: {task_name}")
+        task.unique(task_name, kill_me=True)
+
+    active_tasks.clear()
 
     # Clear all LEDs immediately
     await blackout_segment()
+
+    log.info("WLED fade effect stopped")
 
 
 async def blackout_segment():
@@ -172,13 +184,17 @@ async def blackout_segment():
 
 async def fade_segment_lifecycle(segment_id):
     """Run one complete lifecycle for a single segment"""
-    global running, active_segments, segment_counter
+    global running, active_segments, segment_counter, active_tasks
+
+    task_name = f"segment_{segment_id}"
 
     # Random delay before starting
     if not await interruptible_sleep(random.uniform(0, 3)):
+        active_tasks.discard(task_name)
         return
 
     if not running:
+        active_tasks.discard(task_name)
         return
 
     # Choose random position
@@ -197,6 +213,7 @@ async def fade_segment_lifecycle(segment_id):
 
     if start_y is None:
         log.debug(f"Segment {segment_id} skipped - no space available")
+        active_tasks.discard(task_name)
         # Don't spawn replacement - just exit. Main loop will handle spawning new segments
         return
 
@@ -218,6 +235,7 @@ async def fade_segment_lifecycle(segment_id):
 
     for step in range(num_steps + 1):
         if not running:
+            active_tasks.discard(task_name)
             return
 
         progress = step / num_steps
@@ -234,6 +252,7 @@ async def fade_segment_lifecycle(segment_id):
         await task.sleep(step_duration)
 
     if not running:
+        active_tasks.discard(task_name)
         return
 
     # STAY ON
@@ -243,17 +262,21 @@ async def fade_segment_lifecycle(segment_id):
     # Wait for most of the stay duration, then spawn new segment
     spawn_delay = max(stay_duration - FADE_IN_SECONDS, stay_duration * 0.5)
     if not await interruptible_sleep(spawn_delay):
+        active_tasks.discard(task_name)
         return
 
     # Spawn replacement now (while we're still fully on)
     segment_counter += 1
-    task.unique(f"segment_{segment_counter}")
+    new_task_name = f"segment_{segment_counter}"
+    active_tasks.add(new_task_name)
+    task.unique(new_task_name)
     fade_segment_lifecycle(segment_counter)
 
     # Wait for the rest of the stay duration
     remaining_stay = stay_duration - spawn_delay
     if remaining_stay > 0:
         if not await interruptible_sleep(remaining_stay):
+            active_tasks.discard(task_name)
             return
 
     # FADE OUT
@@ -262,6 +285,7 @@ async def fade_segment_lifecycle(segment_id):
 
     for step in range(num_steps + 1):
         if not running:
+            active_tasks.discard(task_name)
             return
 
         progress = step / num_steps
@@ -287,13 +311,14 @@ async def fade_segment_lifecycle(segment_id):
 
     # Unregister this segment only after fade-out completes
     active_segments.pop(segment_id, None)
+    active_tasks.discard(task_name)
 
     log.info(f"Segment {segment_id} complete")
 
 
 async def run_effect():
     """Main effect loop"""
-    global segment_counter
+    global segment_counter, active_tasks
 
     target_segments = random.randint(NUM_SEGMENTS_MIN, NUM_SEGMENTS_MAX)
 
@@ -302,9 +327,11 @@ async def run_effect():
     # Start initial segments
     for i in range(target_segments):
         segment_counter += 1
+        task_name = f"segment_{segment_counter}"
+        active_tasks.add(task_name)
         log.info(f"Creating segment {segment_counter}")
         # Set unique task context and call
-        task.unique(f"segment_{segment_counter}")
+        task.unique(task_name)
         fade_segment_lifecycle(segment_counter)
         await task.sleep(random.uniform(0.5, 1.5))
 
