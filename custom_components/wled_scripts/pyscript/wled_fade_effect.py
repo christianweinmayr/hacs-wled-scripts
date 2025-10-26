@@ -3,8 +3,6 @@ WLED Matrix Fade Effect - Pyscript Version for Home Assistant
 Requires: Pyscript integration (install via HACS)
 """
 
-import requests
-import time
 import random
 import math
 import asyncio
@@ -39,6 +37,17 @@ running = False
 segment_counter = 0
 
 
+def send_wled_command(payload):
+    """Send command to WLED device (runs in executor to avoid blocking)"""
+    import requests
+    try:
+        requests.post(WLED_URL, json=payload, timeout=2)
+        return True
+    except Exception as e:
+        log.error(f"Error sending WLED command: {e}")
+        return False
+
+
 def calculate_led_index(x, y):
     """Calculate LED index for given x, y position"""
     width = STOP_X - START_X + 1
@@ -70,7 +79,7 @@ def check_overlap(start_y, end_y):
 
 
 @service
-def wled_fade_start():
+async def wled_fade_start():
     """Start the WLED fade effect"""
     global running, segment_counter, active_segments
 
@@ -83,7 +92,7 @@ def wled_fade_start():
     segment_counter = 0
 
     # Clear segment
-    blackout_segment()
+    await blackout_segment()
 
     # Start effect task
     task.unique("wled_fade_effect")
@@ -103,7 +112,7 @@ def wled_fade_stop():
     log.info("WLED fade effect stopped")
 
 
-def blackout_segment():
+async def blackout_segment():
     """Clear all LEDs"""
     height = STOP_Y - START_Y + 1
     width = STOP_X - START_X + 1
@@ -115,23 +124,20 @@ def blackout_segment():
 
     payload = {"seg": {"id": SEGMENT_ID, "i": led_array}}
 
-    try:
-        requests.post(WLED_URL, json=payload, timeout=2)
-        time.sleep(0.2)
+    await task.executor(send_wled_command, payload)
+    await asyncio.sleep(0.2)
 
-        payload2 = {
-            "seg": {
-                "id": SEGMENT_ID,
-                "i": [],
-                "col": [[0, 0, 0]],
-                "bri": 255,
-                "on": True,
-            }
+    payload2 = {
+        "seg": {
+            "id": SEGMENT_ID,
+            "i": [],
+            "col": [[0, 0, 0]],
+            "bri": 255,
+            "on": True,
         }
-        requests.post(WLED_URL, json=payload2, timeout=2)
-        time.sleep(0.5)
-    except Exception as e:
-        log.error(f"Error during blackout: {e}")
+    }
+    await task.executor(send_wled_command, payload2)
+    await asyncio.sleep(0.5)
 
 
 @task_unique("wled_fade_segment_{segment_id}")
@@ -195,10 +201,7 @@ async def fade_segment_lifecycle(segment_id):
             led_array.extend([led_index, hex_color])
 
         payload = {"seg": {"id": SEGMENT_ID, "i": led_array, "bri": 255}}
-        try:
-            requests.post(WLED_URL, json=payload, timeout=1)
-        except:
-            pass
+        await task.executor(send_wled_command, payload)
 
         await asyncio.sleep(step_duration)
 
@@ -245,10 +248,7 @@ async def fade_segment_lifecycle(segment_id):
             led_array.extend([led_index, hex_color])
 
         payload = {"seg": {"id": SEGMENT_ID, "i": led_array, "bri": 255}}
-        try:
-            requests.post(WLED_URL, json=payload, timeout=1)
-        except:
-            pass
+        await task.executor(send_wled_command, payload)
 
         await asyncio.sleep(step_duration)
 
@@ -258,10 +258,7 @@ async def fade_segment_lifecycle(segment_id):
         led_array.extend([led_index, "000000"])
 
     payload = {"seg": {"id": SEGMENT_ID, "i": led_array, "bri": 255}}
-    try:
-        requests.post(WLED_URL, json=payload, timeout=1)
-    except:
-        pass
+    await task.executor(send_wled_command, payload)
 
     # Unregister this segment only after fade-out completes
     active_segments.pop(segment_id, None)

@@ -25,7 +25,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # Create pyscript directory if it doesn't exist
     if not pyscript_dir.exists():
         try:
-            pyscript_dir.mkdir(parents=True, exist_ok=True)
+            await hass.async_add_executor_job(pyscript_dir.mkdir, True, True)
             _LOGGER.info("Created pyscript directory")
         except Exception as e:
             _LOGGER.error(f"Could not create pyscript directory: {e}")
@@ -37,7 +37,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             copied_files = []
             for script_file in source_dir.glob("*.py"):
                 dest_file = pyscript_dir / script_file.name
-                shutil.copy2(script_file, dest_file)
+                # Use executor to run blocking file operations
+                await hass.async_add_executor_job(shutil.copy2, script_file, dest_file)
                 copied_files.append(script_file.name)
                 _LOGGER.info(f"Copied {script_file.name} to pyscript directory")
 
