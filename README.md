@@ -22,30 +22,35 @@ Custom Python scripts for controlling WLED matrix displays with advanced fade ef
 
 ### Via HACS (Recommended)
 
-1. Add this repository to HACS:
+1. Ensure **Pyscript integration** is installed first (see Prerequisites)
+
+2. Add this repository to HACS:
    - Go to HACS → Integrations → ⋮ (three dots) → Custom repositories
-   - Add repository URL: `https://github.com/YOUR_USERNAME/hacs-wled-scripts`
+   - Add repository URL: `https://github.com/christianweinmayr/hacs-wled-scripts`
    - Category: `Integration`
    - Click "Add"
 
-2. Install the integration:
+3. Install the integration:
    - Find "WLED Effect Scripts" in HACS
    - Click "Download"
    - Restart Home Assistant
 
-3. The scripts will be installed to: `/config/pyscript/wled_fade_effect.py`
+4. The integration will automatically copy scripts to your `/config/pyscript/` directory
+   - If auto-copy fails, manually copy from `/config/custom_components/wled_scripts/pyscript/` to `/config/pyscript/`
 
 ### Manual Installation
 
 1. Ensure Pyscript is installed and configured
-2. Copy `pyscript/wled_fade_effect.py` to `/config/pyscript/`
-3. Restart Home Assistant or reload Pyscript
+2. Download this repository
+3. Copy the entire `custom_components/wled_scripts/` folder to `/config/custom_components/`
+4. Copy `custom_components/wled_scripts/pyscript/wled_fade_effect.py` to `/config/pyscript/`
+5. Restart Home Assistant
 
 ## Configuration
 
 ### 1. Edit Script Parameters
 
-Open `/config/pyscript/wled_fade_effect.py` and modify these variables:
+After installation, edit `/config/pyscript/wled_fade_effect.py` and modify these variables:
 
 ```python
 # Your WLED device IP
@@ -190,10 +195,11 @@ cards:
 
 To add more WLED effect scripts in the future:
 
-1. Create a new `.py` file in the `pyscript/` directory
+1. Create a new `.py` file in the `/config/pyscript/` directory
 2. Follow the same pattern as `wled_fade_effect.py`
 3. Expose services using the `@service` decorator
 4. Create corresponding helper entities and automation
+5. Or add them to this integration's `custom_components/wled_scripts/pyscript/` directory and update the `__init__.py` to copy them
 
 ## License
 
