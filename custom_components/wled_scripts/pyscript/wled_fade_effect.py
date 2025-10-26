@@ -5,7 +5,6 @@ Requires: Pyscript integration (install via HACS)
 
 import random
 import math
-import asyncio
 
 # Configuration (you can also set these via Home Assistant input_number helpers)
 WLED_IP = "10.0.42.15"
@@ -32,20 +31,9 @@ LED_BRIGHTNESS = 255
 MIN_SPACING = 1
 
 # Global state
-active_segments = {}
-running = False
-segment_counter = 0
-
-
-def send_wled_command(payload):
-    """Send command to WLED device (runs in executor to avoid blocking)"""
-    import requests
-    try:
-        requests.post(WLED_URL, json=payload, timeout=2)
-        return True
-    except Exception as e:
-        log.error(f"Error sending WLED command: {e}")
-        return False
+pyscript.active_segments = {}
+pyscript.running = False
+pyscript.segment_counter = 0
 
 
 def calculate_led_index(x, y):
@@ -72,31 +60,51 @@ def ease_in_out(t):
 
 def check_overlap(start_y, end_y):
     """Check if a Y range overlaps with any active segments"""
-    for seg_id, (seg_start, seg_end) in active_segments.items():
+    for seg_id, (seg_start, seg_end) in pyscript.active_segments.items():
         if not (end_y + MIN_SPACING < seg_start or start_y > seg_end + MIN_SPACING):
             return True
     return False
 
 
+async def send_wled_command_async(payload):
+    """Send command to WLED using REST API"""
+    try:
+        await homeassistant.call_service(
+            "rest_command",
+            "wled_update",
+            url=WLED_URL,
+            method="POST",
+            payload=str(payload),
+            content_type="application/json"
+        )
+    except Exception as e:
+        # Use direct HTTP call instead
+        import aiohttp
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(WLED_URL, json=payload, timeout=2) as resp:
+                    pass
+        except Exception as e2:
+            log.error(f"Error sending WLED command: {e2}")
+
+
 @service
 async def wled_fade_start():
     """Start the WLED fade effect"""
-    global running, segment_counter, active_segments
-
-    if running:
+    if pyscript.running:
         log.warning("WLED fade effect is already running")
         return
 
-    running = True
-    active_segments = {}
-    segment_counter = 0
+    pyscript.running = True
+    pyscript.active_segments = {}
+    pyscript.segment_counter = 0
 
     # Clear segment
     await blackout_segment()
 
     # Start effect task
     task.unique("wled_fade_effect")
-    run_effect()
+    task.create(run_effect())
 
     log.info("WLED fade effect started")
 
@@ -104,9 +112,7 @@ async def wled_fade_start():
 @service
 def wled_fade_stop():
     """Stop the WLED fade effect"""
-    global running
-
-    running = False
+    pyscript.running = False
     task.unique("wled_fade_effect", kill_me=True)
 
     log.info("WLED fade effect stopped")
@@ -124,8 +130,8 @@ async def blackout_segment():
 
     payload = {"seg": {"id": SEGMENT_ID, "i": led_array}}
 
-    await task.executor(send_wled_command, payload)
-    await asyncio.sleep(0.2)
+    await send_wled_command_async(payload)
+    await task.sleep(0.2)
 
     payload2 = {
         "seg": {
@@ -136,19 +142,18 @@ async def blackout_segment():
             "on": True,
         }
     }
-    await task.executor(send_wled_command, payload2)
-    await asyncio.sleep(0.5)
+    await send_wled_command_async(payload2)
+    await task.sleep(0.5)
 
 
 @task_unique("wled_fade_segment_{segment_id}")
 async def fade_segment_lifecycle(segment_id):
     """Run one complete lifecycle for a single segment"""
-    global running, active_segments, segment_counter
 
     # Random delay before starting
-    await asyncio.sleep(random.uniform(0, 3))
+    await task.sleep(random.uniform(0, 3))
 
-    if not running:
+    if not pyscript.running:
         return
 
     # Choose random position
@@ -168,13 +173,13 @@ async def fade_segment_lifecycle(segment_id):
     if start_y is None:
         log.debug(f"Segment {segment_id} skipped - no space available")
         # Spawn replacement
-        segment_counter += 1
-        fade_segment_lifecycle(segment_counter)
+        pyscript.segment_counter += 1
+        task.create(fade_segment_lifecycle(pyscript.segment_counter))
         return
 
     # Register segment
     end_y = start_y + segment_length - 1
-    active_segments[segment_id] = (start_y, end_y)
+    pyscript.active_segments[segment_id] = (start_y, end_y)
 
     # Create LED list
     led_indices = []
@@ -189,7 +194,7 @@ async def fade_segment_lifecycle(segment_id):
     step_duration = FADE_IN_SECONDS / num_steps
 
     for step in range(num_steps + 1):
-        if not running:
+        if not pyscript.running:
             return
 
         progress = step / num_steps
@@ -201,11 +206,11 @@ async def fade_segment_lifecycle(segment_id):
             led_array.extend([led_index, hex_color])
 
         payload = {"seg": {"id": SEGMENT_ID, "i": led_array, "bri": 255}}
-        await task.executor(send_wled_command, payload)
+        await send_wled_command_async(payload)
 
-        await asyncio.sleep(step_duration)
+        await task.sleep(step_duration)
 
-    if not running:
+    if not pyscript.running:
         return
 
     # STAY ON
@@ -214,21 +219,21 @@ async def fade_segment_lifecycle(segment_id):
     # Spawn replacement during stay-on phase (before fade-out) to maintain continuous lighting
     # Wait for most of the stay duration, then spawn new segment
     spawn_delay = max(stay_duration - FADE_IN_SECONDS, stay_duration * 0.5)
-    await asyncio.sleep(spawn_delay)
+    await task.sleep(spawn_delay)
 
-    if not running:
+    if not pyscript.running:
         return
 
     # Spawn replacement now (while we're still fully on)
-    segment_counter += 1
-    fade_segment_lifecycle(segment_counter)
+    pyscript.segment_counter += 1
+    task.create(fade_segment_lifecycle(pyscript.segment_counter))
 
     # Wait for the rest of the stay duration
     remaining_stay = stay_duration - spawn_delay
     if remaining_stay > 0:
-        await asyncio.sleep(remaining_stay)
+        await task.sleep(remaining_stay)
 
-    if not running:
+    if not pyscript.running:
         return
 
     # FADE OUT
@@ -236,7 +241,7 @@ async def fade_segment_lifecycle(segment_id):
     step_duration = FADE_OUT_SECONDS / num_steps
 
     for step in range(num_steps + 1):
-        if not running:
+        if not pyscript.running:
             return
 
         progress = step / num_steps
@@ -248,9 +253,9 @@ async def fade_segment_lifecycle(segment_id):
             led_array.extend([led_index, hex_color])
 
         payload = {"seg": {"id": SEGMENT_ID, "i": led_array, "bri": 255}}
-        await task.executor(send_wled_command, payload)
+        await send_wled_command_async(payload)
 
-        await asyncio.sleep(step_duration)
+        await task.sleep(step_duration)
 
     # Clear LEDs
     led_array = []
@@ -258,10 +263,10 @@ async def fade_segment_lifecycle(segment_id):
         led_array.extend([led_index, "000000"])
 
     payload = {"seg": {"id": SEGMENT_ID, "i": led_array, "bri": 255}}
-    await task.executor(send_wled_command, payload)
+    await send_wled_command_async(payload)
 
     # Unregister this segment only after fade-out completes
-    active_segments.pop(segment_id, None)
+    pyscript.active_segments.pop(segment_id, None)
 
     log.info(f"Segment {segment_id} complete")
 
@@ -269,16 +274,14 @@ async def fade_segment_lifecycle(segment_id):
 @task_unique("wled_fade_effect")
 async def run_effect():
     """Main effect loop"""
-    global segment_counter
-
     target_segments = random.randint(NUM_SEGMENTS_MIN, NUM_SEGMENTS_MAX)
 
     # Start initial segments
     for i in range(target_segments):
-        segment_counter += 1
-        fade_segment_lifecycle(segment_counter)
-        await asyncio.sleep(random.uniform(0.5, 1.5))
+        pyscript.segment_counter += 1
+        task.create(fade_segment_lifecycle(pyscript.segment_counter))
+        await task.sleep(random.uniform(0.5, 1.5))
 
     # Keep running
-    while running:
-        await asyncio.sleep(10)
+    while pyscript.running:
+        await task.sleep(10)
