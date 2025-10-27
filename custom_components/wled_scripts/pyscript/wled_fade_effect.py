@@ -96,6 +96,30 @@ async def send_wled_command_async(payload):
         log.error(f"Traceback: {traceback.format_exc()}")
 
 
+async def _do_stop():
+    """Internal helper to stop the effect"""
+    global running, active_tasks
+
+    log.info(f"Stopping WLED fade effect - killing {len(active_tasks)} segment tasks")
+
+    running = False
+
+    # Kill main effect task
+    task.unique("wled_fade_effect", kill_me=True)
+
+    # Kill all active segment tasks
+    for task_name in list(active_tasks):
+        log.debug(f"Killing task: {task_name}")
+        task.unique(task_name, kill_me=True)
+
+    active_tasks.clear()
+
+    # Clear all LEDs immediately
+    await blackout_segment()
+
+    log.info("WLED fade effect stopped")
+
+
 @service
 async def wled_fade_start():
     """Start the WLED fade effect"""
@@ -105,7 +129,7 @@ async def wled_fade_start():
 
     if running:
         log.warning("WLED fade effect is already running - stopping it first")
-        await wled_fade_stop()
+        await _do_stop()
         await task.sleep(1)
 
     log.info(f"Starting WLED fade effect - IP: {WLED_IP}, Segment: {SEGMENT_ID}")
@@ -132,26 +156,7 @@ async def wled_fade_start():
 @service
 async def wled_fade_stop():
     """Stop the WLED fade effect"""
-    global running, active_tasks
-
-    log.info(f"Stopping WLED fade effect - killing {len(active_tasks)} segment tasks")
-
-    running = False
-
-    # Kill main effect task
-    task.unique("wled_fade_effect", kill_me=True)
-
-    # Kill all active segment tasks
-    for task_name in list(active_tasks):
-        log.debug(f"Killing task: {task_name}")
-        task.unique(task_name, kill_me=True)
-
-    active_tasks.clear()
-
-    # Clear all LEDs immediately
-    await blackout_segment()
-
-    log.info("WLED fade effect stopped")
+    await _do_stop()
 
 
 async def blackout_segment():
