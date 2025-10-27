@@ -148,7 +148,7 @@ async def wled_fade_start():
     # Start effect task
     log.info("Creating run_effect task...")
     task.unique("wled_fade_effect")
-    task.create(run_effect())
+    run_effect()
 
     log.info("WLED fade effect started - check logs for 'Segment X:' messages")
 
